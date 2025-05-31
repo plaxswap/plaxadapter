@@ -57,7 +57,20 @@ export const fetchUserDrawData = async (account: string) => {
 
 export const fetchWithdrawAbleData = async (account: string) => {
   try {
-    const response = await request(
+    type WithdrawalsResponse = {
+      withdrawals: Array<{
+        id: string
+        shares: string
+        depositDate: string
+        vault: {
+          id: string
+          status: keyof typeof PotteryDepositStatus
+          lockDate: string
+        }
+      }>
+    }
+
+    const response = await request<WithdrawalsResponse>(
       GRAPH_API_POTTERY,
       gql`
         query getUserPotteryWithdrawAbleData($account: ID!) {
