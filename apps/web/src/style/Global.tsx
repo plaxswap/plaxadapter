@@ -18,6 +18,6 @@ const GlobalStyle = createGlobalStyle`
       max-width: 100%;
     }
   }
-`
+` as unknown as React.FC
 
 export default GlobalStyle

@@ -111,6 +111,6 @@ const ResetCSS = createGlobalStyle`
     border-color: transparent;
     color: transparent;
   }  
-`;
+` as unknown as React.FC
 
 export default ResetCSS;
