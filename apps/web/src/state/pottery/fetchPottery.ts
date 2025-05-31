@@ -14,7 +14,14 @@ const potteryDrawAddress = getPotteryDrawAddress()
 
 export const fetchLastVaultAddress = async () => {
   try {
-    const response = await request(
+    type LastVaultAddressResponse = {
+      pottery: {
+        id: string
+        lastVaultAddress: string
+      }
+    }
+
+    const response = await request<LastVaultAddressResponse>(
       GRAPH_API_POTTERY,
       gql`
         query getLastVaultAddress($contract: ID!) {
@@ -110,7 +117,11 @@ export const fetchTotalLockedValue = async (potteryVaultAddress: string) => {
 
 export const fetchLatestRoundId = async () => {
   try {
-    const response = await request(
+    type LatestRoundIdResponse = {
+      potteryVaultRounds: { roundId: string; winners: string[] }[]
+    }
+
+    const response = await request<LatestRoundIdResponse>(
       GRAPH_API_POTTERY,
       gql`
         query getLatestRoundId {
@@ -126,7 +137,11 @@ export const fetchLatestRoundId = async () => {
     const latestRoundId = response.potteryVaultRounds[0]?.roundId
 
     return {
-      latestRoundId: winners?.length > 0 ? latestRoundId || '' : latestRoundId - 1,
+      latestRoundId: winners?.length > 0
+        ? latestRoundId || ''
+        : latestRoundId
+        ? (Number(latestRoundId) - 1).toString()
+        : '',
     }
   } catch (error) {
     console.error('Failed to fetch last roundId ', error)
