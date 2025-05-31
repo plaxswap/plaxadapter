@@ -4,6 +4,7 @@ import Cookie from 'js-cookie'
 import { COOKIE_THEME_KEY, THEME_DOMAIN } from 'hooks/useTheme'
 
 const useThemeCookie = () => {
+  // @ts-ignore
   const theme = useContext(StyledThemeContext)
   const themeValue = theme.isDark ? 'dark' : 'light'
 
