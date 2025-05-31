@@ -55,12 +55,12 @@ export const getStaticProps: GetStaticProps = async () => {
       throw new Error('No block found for 30 days ago')
     }
 
-    const totalTx = await infoServerClient.request(totalTxQuery)
+    const totalTx = await infoServerClient.request(totalTxQuery) as { pancakeFactory?: { totalTransactions?: string } }
     const totalTx30DaysAgo = await infoServerClient.request(totalTxQuery, {
       block: {
         number: days30AgoBlock.number,
       },
-    })
+    }) as { pancakeFactory?: { totalTransactions?: string } }
 
     if (
       totalTx?.pancakeFactory?.totalTransactions &&
@@ -91,7 +91,11 @@ export const getStaticProps: GetStaticProps = async () => {
       const result = await bitQueryServerClient.request(usersQuery, {
         since: days30Ago.toISOString(),
         till: new Date().toISOString(),
-      })
+      }) as {
+        ethereum?: {
+          dexTrades?: Array<{ count?: number }>
+        }
+      }
       if (result?.ethereum?.dexTrades?.[0]?.count) {
         results.addressCount30Days = result.ethereum.dexTrades[0].count
       }
@@ -109,7 +113,7 @@ export const getStaticProps: GetStaticProps = async () => {
           totalLiquidityUSD
         }
       }
-    `)
+    `) as { pancakeFactories: Array<{ totalLiquidityUSD: string }> }
     const cake = await (await fetch('https://farms-api.pancakeswap.com/price/cake')).json()
     const { totalLiquidityUSD } = result.pancakeFactories[0]
     const cakeVaultV2 = getCakeVaultAddress()
