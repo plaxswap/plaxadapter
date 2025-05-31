@@ -20,7 +20,6 @@ declare module 'swr' {
     error: Error | undefined
     mutate: KeyedMutator<Data>
     isValidating: boolean
-    isLoading: BlockingData<Data, Config> extends true ? false : boolean
     // Add global fetchStatus to SWRResponse
     status: FetchStatus
   }
