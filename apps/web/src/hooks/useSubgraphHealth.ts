@@ -35,8 +35,17 @@ const useSubgraphHealth = (subgraphName: string) => {
     (currentBlockNumber) => {
       const getSubgraphHealth = async () => {
         try {
+          type IndexingStatusResponse = {
+            indexingStatusForCurrentVersion: {
+              health: string
+              chains: {
+                chainHeadBlock: { number: string }
+                latestBlock: { number: string }
+              }[]
+            }
+          }
           const [{ indexingStatusForCurrentVersion }, currentBlock] = await Promise.all([
-            request(
+            request<IndexingStatusResponse>(
               GRAPH_HEALTH,
               gql`
             query getNftMarketSubgraphHealth {
