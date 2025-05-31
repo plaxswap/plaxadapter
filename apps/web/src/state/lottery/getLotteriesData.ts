@@ -80,7 +80,7 @@ export const getGraphLotteries = async (
         }
       `,
       { skip, first, where },
-    )
+    ) as { lotteries: LotteryRoundGraphEntity[] }
     return response.lotteries
   } catch (error) {
     console.error(error)
