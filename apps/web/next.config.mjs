@@ -180,6 +180,11 @@ const config = {
         __SENTRY_TRACING__: false,
       }),
     )
+        
+    // Add MiniCssExtractPlugin for vanilla-extract
+    const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+    webpackConfig.plugins.push(new MiniCssExtractPlugin());
+    
     return webpackConfig
   },
 }
