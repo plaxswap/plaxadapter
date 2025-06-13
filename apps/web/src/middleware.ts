@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
 
-  if (shouldGeoBlock(req.geo)) {
+  if (shouldGeoBlock({ country: req.headers.get('x-vercel-ip-country') })) {
     return NextResponse.redirect(new URL('/451', req.url))
   }
 
