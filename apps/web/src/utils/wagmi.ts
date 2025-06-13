@@ -1,21 +1,20 @@
-import { binanceWallet } from '@pancakeswap/wagmi/connectors/binanceWallet'
-import { blocto } from '@pancakeswap/wagmi/connectors/blocto'
-import { trustWallet } from '@pancakeswap/wagmi/connectors/trustWallet'
-import { miniProgram } from '@pancakeswap/wagmi/connectors/miniProgram'
+import { BinanceWalletConnector } from '@pancakeswap/wagmi/connectors/binanceWallet'
+import { BloctoConnector } from '@pancakeswap/wagmi/connectors/blocto'
+import { TrustWalletConnector } from '@pancakeswap/wagmi/connectors/trustWallet'
 import { 
   // bsc, bscTestnet, goerli, 
   mainnet, polygon, polygonMumbai } from 'wagmi/chains'
 // import { canto } from '../../../../packages/wagmi/src/chains'
 // import { core } from '../../../../packages/wagmi/src/chains'
-import { createConfig } from 'wagmi'
-import { http } from 'viem'
+import { configureChains, createClient } from 'wagmi'
 import memoize from 'lodash/memoize'
-import { coinbaseWallet } from 'wagmi/connectors'
-import { injected } from 'wagmi/connectors'
-import { metaMask } from 'wagmi/connectors'
-import { walletConnect } from 'wagmi/connectors'
-import { ledger } from 'wagmi/connectors'
-import { safeWallet } from './safeConnectorV2'
+import { CoinbaseWalletConnector } from 'wagmi/connectors/coinbaseWallet'
+import { InjectedConnector } from 'wagmi/connectors/injected'
+import { MetaMaskConnector } from 'wagmi/connectors/metaMask'
+import { WalletConnectConnector } from 'wagmi/connectors/walletConnect'
+import { LedgerConnector } from 'wagmi/connectors/ledger'
+import { jsonRpcProvider } from 'wagmi/providers/jsonRpc'
+import { SafeConnector } from './safeConnector'
 
 // const CHAINS = [bsc, mainnet, bscTestnet, goerli, polygon]
 const CHAINS = [polygon, polygonMumbai]
@@ -49,89 +48,22 @@ const getNodeRealUrl = (networkName: string) => {
   }
 }
 
-// Definisikan fungsi untuk mendapatkan transport untuk setiap chain
-const getTransport = (chain) => {
-  if (!!process.env.NEXT_PUBLIC_NODE_PRODUCTION && chain.id === polygon.id) {
-    return http(process.env.NEXT_PUBLIC_NODE_PRODUCTION)
-  }
-  if (process.env.NODE_ENV === 'test' && chain.id === mainnet.id) {
-    return http('https://cloudflare-eth.com')
-  }
+export const { provider, chains } = configureChains(CHAINS, [
+  jsonRpcProvider({
+    rpc: (chain) => {
+      if (!!process.env.NEXT_PUBLIC_NODE_PRODUCTION && chain.id === polygon.id) {
+        return { http: process.env.NEXT_PUBLIC_NODE_PRODUCTION }
+      }
+      if (process.env.NODE_ENV === 'test' && chain.id === mainnet.id) {
+        return { http: 'https://cloudflare-eth.com' }
+      }
 
-  const nodeRealUrl = getNodeRealUrl(chain.network)
-  if (nodeRealUrl) {
-    return http(nodeRealUrl.http)
-  }
-  
-  return http(chain.rpcUrls.default.http[0])
-}
+      return getNodeRealUrl(chain.network) || { http: chain.rpcUrls.default.http[0] }
+    },
+  }),
+])
 
-// Buat transports object untuk setiap chain
-const transports = {}
-CHAINS.forEach(chain => {
-  transports[chain.id] = getTransport(chain)
-})
-
-// Definisikan chains yang didukung
-const chains = CHAINS
-
-// Definisikan connectors menggunakan wagmi v2 API
-export const injectedConnector = injected({
-  chains,
-  options: {
-    shimDisconnect: false,
-  },
-})
-
-export const coinbaseConnector = coinbaseWallet({
-  chains,
-  options: {
-    appName: 'PancakeSwap',
-    appLogoUrl: 'https://pancakeswap.com/logo.png',
-  },
-})
-
-export const walletConnectConnector = walletConnect({
-  chains,
-  options: {
-    projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || 'YOUR_PROJECT_ID',
-    showQrModal: true,
-  },
-})
-
-export const walletConnectNoQrCodeConnector = walletConnect({
-  chains,
-  options: {
-    projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || 'YOUR_PROJECT_ID',
-    showQrModal: false,
-  },
-})
-
-export const metaMaskConnector = metaMask({
-  chains,
-  options: {
-    shimDisconnect: false,
-  },
-})
-
-// Menggunakan factory function blocto untuk wagmi v2
-const bloctoConnector = blocto({
-  chains,
-  options: {
-    defaultChainId: 137,
-    appId: 'e2f2f0cd-3ceb-4dec-b293-bb555f2ed5af',
-  },
-})
-
-const ledgerConnector = ledger({
-  chains,
-})
-
-// Menggunakan factory function binanceWallet untuk wagmi v2
-export const bscConnector = binanceWallet({ chains })
-
-// Menggunakan factory function trustWallet untuk wagmi v2
-export const trustWalletConnector = trustWallet({
+export const injectedConnector = new InjectedConnector({
   chains,
   options: {
     shimDisconnect: false,
@@ -139,36 +71,73 @@ export const trustWalletConnector = trustWallet({
   },
 })
 
-// Menggunakan factory function miniProgram untuk wagmi v2
-export const miniProgramConnector = miniProgram({
+export const coinbaseConnector = new CoinbaseWalletConnector({
   chains,
-  getWeb3Provider: () => {
-    return typeof window !== 'undefined' ? window.bn : null
+  options: {
+    appName: 'PancakeSwap',
+    appLogoUrl: 'https://pancakeswap.com/logo.png',
   },
 })
 
-// Buat konfigurasi wagmi menggunakan createConfig
-export const config = createConfig({
+export const walletConnectConnector = new WalletConnectConnector({
   chains,
-  transports,
+  options: {
+    qrcode: true,
+  },
+})
+
+export const walletConnectNoQrCodeConnector = new WalletConnectConnector({
+  chains,
+  options: {
+    qrcode: false,
+  },
+})
+
+export const metaMaskConnector = new MetaMaskConnector({
+  chains,
+  options: {
+    shimDisconnect: false,
+    shimChainChangedDisconnect: true,
+  },
+})
+
+const bloctoConnector = new BloctoConnector({
+  chains,
+  options: {
+    defaultChainId: 137,
+    appId: 'e2f2f0cd-3ceb-4dec-b293-bb555f2ed5af',
+  },
+})
+
+const ledgerConnector = new LedgerConnector({
+  chains,
+})
+
+export const bscConnector = new BinanceWalletConnector({ chains })
+
+export const trustWalletConnector = new TrustWalletConnector({
+  chains,
+  options: {
+    shimDisconnect: false,
+    shimChainChangedDisconnect: true,
+  },
+})
+
+export const client = createClient({
+  autoConnect: false,
+  provider,
   connectors: [
-    // Menggunakan SafeConnector yang sudah diperbarui untuk wagmi v2
-    safeWallet({ chains }),
+    new SafeConnector({ chains }),
     metaMaskConnector,
     injectedConnector,
     coinbaseConnector,
     walletConnectConnector,
-    // Connector yang sudah diperbarui untuk wagmi v2
     bscConnector,
     bloctoConnector,
     ledgerConnector,
     trustWalletConnector,
-    miniProgramConnector,
   ],
 })
-
-// Untuk kompatibilitas dengan kode lama
-export const client = config
 
 export const CHAIN_IDS = chains.map((c) => c.id)
 

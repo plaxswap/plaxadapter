@@ -1,1 +1,1 @@
-export { blocto } from './blocto'
+export * from './blocto'

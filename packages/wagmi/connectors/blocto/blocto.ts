@@ -6,13 +6,14 @@ import {
   ConnectorNotFoundError,
   ResourceUnavailableError,
   ChainNotConfiguredError,
+  RpcError,
   UserRejectedRequestError,
-  createConnector,
+  ProviderRpcError,
 } from 'wagmi'
-import { Connector } from 'wagmi/connectors'
+import { Connector, normalizeChainId } from '@wagmi/core'
 import type { EthereumProviderInterface } from '@blocto/sdk'
-import { getAddress, normalizeChainId } from 'viem'
-import { createWalletClient, custom } from 'viem'
+import { getAddress } from '@ethersproject/address'
+import { ExternalProvider, Web3Provider } from '@ethersproject/providers'
 
 const chainIdToNetwork: { [network: number]: string } = {
   1: 'mainnet',
@@ -27,87 +28,7 @@ const chainIdToNetwork: { [network: number]: string } = {
   43113: 'fuji', // Avalanche Testnet
 }
 
-export function blocto(config: { 
-  chains?: Chain[]; 
-  options?: { defaultChainId: number; appId?: string } 
-} = { options: { defaultChainId: 56 } }) {
-  const { chains: _chains, options } = config
-  const chains = _chains?.filter((c) => !!chainIdToNetwork[c.id])
-  const defaultOptions = { defaultChainId: 56, ...options }
-  
-  return createConnector<EthereumProviderInterface>((config) => {
-    const connector = new BloctoConnectorClass({
-      chains,
-      options: defaultOptions,
-    })
-    
-    return {
-      id: 'blocto',
-      name: 'Blocto',
-      type: 'injected',
-      
-      connect: async ({ chainId } = {}) => {
-        try {
-          const provider = await connector.getProvider({ chainId })
-          if (!provider) throw new ConnectorNotFoundError()
-          
-          if (provider.on) {
-            provider.on('accountsChanged', config.emitter.emit.bind(null, 'change', { account: connector.onAccountsChanged }))
-            provider.on('chainChanged', config.emitter.emit.bind(null, 'change', { chainId: connector.onChainChanged }))
-            provider.on('disconnect', config.emitter.emit.bind(null, 'disconnect'))
-          }
-          
-          config.emitter.emit('message', { type: 'connecting' })
-          
-          const account = await connector.getAccount()
-          const id = await connector.getChainId()
-          
-          return { account, chainId: id }
-        } catch (error) {
-          connector.disconnect()
-          if (connector.isUserRejectedRequestError(error)) throw new UserRejectedRequestError(error)
-          if ((error as any).code === -32002) throw new ResourceUnavailableError(error)
-          throw error
-        }
-      },
-      
-      disconnect: async () => {
-        await connector.disconnect()
-      },
-      
-      getAccount: async () => {
-        return connector.getAccount()
-      },
-      
-      getChainId: async () => {
-        return connector.getChainId()
-      },
-      
-      getProvider: async ({ chainId } = {}) => {
-        return connector.getProvider({ chainId })
-      },
-      
-      isAuthorized: async () => {
-        return connector.isAuthorized()
-      },
-      
-      getWalletClient: async ({ chainId } = {}) => {
-        const [provider, account] = await Promise.all([
-          connector.getProvider({ chainId }),
-          connector.getAccount(),
-        ])
-        if (!provider) throw new ConnectorNotFoundError()
-        return createWalletClient({
-          account,
-          chain: config.chains.find((x) => x.id === chainId) ?? config.chains[0],
-          transport: custom(provider),
-        })
-      },
-    }
-  })
-}
-
-class BloctoConnectorClass extends Connector {
+export class BloctoConnector extends Connector<EthereumProviderInterface, { defaultChainId: number; appId?: string }> {
   readonly id = 'blocto'
 
   readonly name = 'Blocto'
@@ -115,16 +36,17 @@ class BloctoConnectorClass extends Connector {
   readonly ready = typeof window !== 'undefined'
 
   provider?: EthereumProviderInterface
-  
-  options: { defaultChainId: number; appId?: string }
 
   constructor(
     config: { chains?: Chain[]; options: { defaultChainId: number; appId?: string } } = {
       options: { defaultChainId: 56 },
     },
   ) {
-    super(config)
-    this.options = config.options
+    const chains = config.chains?.filter((c) => !!chainIdToNetwork[c.id])
+    super({
+      chains,
+      options: config.options,
+    })
   }
 
   async connect({ chainId }: { chainId?: number } = {}) {
@@ -132,17 +54,23 @@ class BloctoConnectorClass extends Connector {
       const provider = await this.getProvider({ chainId })
       if (!provider) throw new ConnectorNotFoundError()
 
-      // Wagmi v2 handles events differently through the connector config
-      // Event handling is now managed in the blocto function
+      if (provider.on) {
+        provider.on('accountsChanged', this.onAccountsChanged)
+        provider.on('chainChanged', this.onChainChanged)
+        provider.on('disconnect', this.onDisconnect)
+      }
+
+      this.emit('message', { type: 'connecting' })
 
       const account = await this.getAccount()
       const id = await this.getChainId()
+      const unsupported = this.isChainUnsupported(id)
 
-      return { account, chainId: id, provider }
+      return { account: account as `0x${string}`, chain: { id, unsupported }, provider }
     } catch (error) {
       this.disconnect()
       if (this.isUserRejectedRequestError(error)) throw new UserRejectedRequestError(error)
-      if ((error as any).code === -32002) throw new ResourceUnavailableError(error)
+      if ((<RpcError>error).code === -32002) throw new ResourceUnavailableError(error)
       throw error
     }
   }
@@ -191,6 +119,11 @@ class BloctoConnectorClass extends Connector {
     }
   }
 
+  async getSigner({ chainId }: { chainId?: number } = {}) {
+    const [provider, account] = await Promise.all([this.getProvider({ chainId }), this.getAccount()])
+    return new Web3Provider(<ExternalProvider>provider, chainId).getSigner(account)
+  }
+
   async getAccount(): Promise<`0x${string}`> {
     const provider = await this.getProvider()
     if (!provider) throw new ConnectorNotFoundError()
@@ -207,26 +140,34 @@ class BloctoConnectorClass extends Connector {
     return provider.request({ method: 'eth_chainId' }).then(normalizeChainId)
   }
 
-  onAccountsChanged = (accounts: string[]) => {
-    if (accounts.length === 0) return { account: undefined }
-    return { account: getAddress(accounts[0] as string) as `0x${string}` }
+  protected onAccountsChanged = (accounts: string[]) => {
+    if (accounts.length === 0) this.emit('disconnect')
+    else
+      this.emit('change', {
+        account: getAddress(accounts[0] as string) as `0x${string}`,
+      })
   }
 
-  onChainChanged = (chainId: number | string) => {
+  protected onChainChanged = (chainId: number | string) => {
     const id = normalizeChainId(chainId)
-    return { chainId: id }
+    const unsupported = this.isChainUnsupported(id)
+    this.emit('change', { chain: { id, unsupported } })
+  }
+
+  protected onDisconnect = () => {
+    this.emit('disconnect')
   }
 
   async disconnect() {
     const provider = await this.getProvider()
     if (!provider?.removeListener) return
+
+    provider.removeListener('accountsChanged', this.onAccountsChanged)
+    provider.removeListener('chainChanged', this.onChainChanged)
+    provider.removeListener('disconnect', this.onDisconnect)
   }
 
-  isUserRejectedRequestError(error: unknown) {
-    return (error as any).code === 4001
-  }
-  
-  isChainUnsupported(chainId: number) {
-    return !this.chains.some((chain) => chain.id === chainId)
+  protected isUserRejectedRequestError(error: unknown) {
+    return (error as ProviderRpcError).code === 4001
   }
 }

@@ -1,10 +1,10 @@
 /* eslint-disable prefer-destructuring */
 /* eslint-disable consistent-return */
 /* eslint-disable class-methods-use-this */
-import { Chain, ConnectorNotFoundError, ResourceUnavailableError, UserRejectedRequestError, createConnector, SwitchChainNotSupportedError, SwitchChainError, AddChainError } from 'wagmi'
-import { InjectedConnector } from 'wagmi/connectors'
-import { getAddress, hexValue } from 'viem'
-import type { Ethereum } from 'viem/window'
+import { Chain, ConnectorNotFoundError, ResourceUnavailableError, RpcError, UserRejectedRequestError } from 'wagmi'
+import { InjectedConnector } from 'wagmi/connectors/injected'
+import { Address, Ethereum, getClient } from '@wagmi/core'
+import { getAddress } from '@ethersproject/address'
 
 declare global {
   interface Window {
@@ -53,86 +53,37 @@ export function getTrustWalletProvider() {
   return window.trustwallet
 }
 
-export function trustWallet(config: { 
-  chains?: Chain[]
-  options?: {
-    shimDisconnect?: boolean
-    shimChainChangedDisconnect?: boolean
-  }
-} = {}) {
-  const { chains: _chains, options: _options } = config
-  const chains = _chains?.filter((c) => !!mappingNetwork[c.id])
-  const options = {
-    name: 'Trust Wallet',
-    shimDisconnect: _options?.shimDisconnect ?? false,
-    shimChainChangedDisconnect: _options?.shimChainChangedDisconnect ?? true,
-  }
-  
-  return createConnector<Window['trustwallet']>((config) => {
-    const connector = new TrustWalletConnectorClass({
+export class TrustWalletConnector extends InjectedConnector {
+  readonly id = 'trustWallet'
+
+  constructor({
+    chains: _chains,
+    options: _options,
+  }: {
+    chains?: Chain[]
+    options?: {
+      shimDisconnect?: boolean
+      shimChainChangedDisconnect?: boolean
+    }
+  } = {}) {
+    const options = {
+      name: 'Trust Wallet',
+      shimDisconnect: _options?.shimDisconnect ?? false,
+      shimChainChangedDisconnect: _options?.shimChainChangedDisconnect ?? true,
+    }
+    const chains = _chains?.filter((c) => !!mappingNetwork[c.id])
+    super({
       chains,
       options,
     })
-    
-    return {
-      id: 'trustWallet',
-      name: 'Trust Wallet',
-      type: 'injected',
-      
-      connect: async ({ chainId } = {}) => {
-        try {
-          return await connector.connect({ chainId })
-        } catch (error) {
-          connector.handleFailedConnect(error as Error)
-        }
-      },
-      
-      disconnect: async () => {
-        const provider = await connector.getProvider()
-        if (!provider?.removeListener) return
-        
-        provider.removeListener('accountsChanged', config.emitter.emit.bind(null, 'change', { account: connector.onAccountsChanged }))
-        provider.removeListener('chainChanged', config.emitter.emit.bind(null, 'change', { chainId: connector.onChainChanged }))
-        provider.removeListener('disconnect', config.emitter.emit.bind(null, 'disconnect'))
-        
-        if (connector.options?.shimDisconnect) {
-          config.storage?.removeItem(connector.shimDisconnectKey)
-        }
-      },
-      
-      getAccount: async () => {
-        return connector.getAccount()
-      },
-      
-      getChainId: async () => {
-        return connector.getChainId()
-      },
-      
-      getProvider: async () => {
-        return connector.getProvider()
-      },
-      
-      isAuthorized: async () => {
-        return connector.isAuthorized()
-      },
-      
-      switchChain: async (chainId) => {
-        const chain = await connector.switchChain(chainId)
-        return chain.id
-      },
-    }
-  })
-}
+  }
 
-class TrustWalletConnectorClass extends InjectedConnector {
-  readonly id = 'trustWallet'
-
-  handleFailedConnect(error: Error): never {
+  private handleFailedConnect(error: Error): never {
     if (this.isUserRejectedRequestError(error)) {
       throw new UserRejectedRequestError(error)
     }
 
-    if ((error as any).code === -32002) {
+    if ((error as RpcError).code === -32002) {
       throw new ResourceUnavailableError(error)
     }
 
@@ -146,13 +97,18 @@ class TrustWalletConnectorClass extends InjectedConnector {
         throw new ConnectorNotFoundError()
       }
 
-      // Wagmi v2 handles events differently through the connector config
-      // Event handling is now managed in the trustWallet function
+      if (provider.on) {
+        provider.on('accountsChanged', this.onAccountsChanged)
+        provider.on('chainChanged', this.onChainChanged)
+        provider.on('disconnect', this.onDisconnect)
+      }
+
+      this.emit('message', { type: 'connecting' })
 
       // Attempt to show wallet select prompt with `wallet_requestPermissions` when
       // `shimDisconnect` is active and account is in disconnected state (flag in storage)
       let account: `0x${string}` | null = null
-      if (this.options?.shimDisconnect) {
+      if (this.options?.shimDisconnect && !getClient().storage?.getItem(this.shimDisconnectKey)) {
         try {
           account = await this.getAccount()
           // Attempt to show another prompt for selecting wallet if already connected
@@ -183,84 +139,24 @@ class TrustWalletConnectorClass extends InjectedConnector {
 
       // Switch to chain if provided
       let id = await this.getChainId()
+      let unsupported = this.isChainUnsupported(id)
       if (chainId && id !== chainId) {
         const chain = await this.switchChain(chainId)
         id = chain.id
+        unsupported = this.isChainUnsupported(id)
       }
 
-      return { account, chainId: id, provider }
+      if (this.options?.shimDisconnect) {
+        getClient().storage?.setItem(this.shimDisconnectKey, true)
+      }
+
+      return { account, chain: { id, unsupported }, provider }
     } catch (error) {
       this.handleFailedConnect(error as Error)
     }
   }
 
   async getProvider() {
-    const provider = getTrustWalletProvider()
-    return provider
-  }
-
-  async switchChain(chainId: number) {
-    const provider = await this.getProvider()
-    if (!provider) {
-      throw new ConnectorNotFoundError()
-    }
-
-    const id = hexValue(chainId)
-
-    try {
-      await provider.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: id }],
-      })
-      return { id: chainId }
-    } catch (error) {
-      const message = typeof error === 'string' ? error : (error as any)?.message
-      if (/user rejected request/i.test(message)) {
-        throw new UserRejectedRequestError(error)
-      }
-
-      const chain = this.chains.find((x) => x.id === chainId)
-      if (!chain) {
-        throw new SwitchChainNotSupportedError({ chainId, connector: this })
-      }
-
-      // Indicates chain is not added to provider
-      if ((error as any).code === 4902 || /chain not added/i.test(message)) {
-        try {
-          await provider.request({
-            method: 'wallet_addEthereumChain',
-            params: [
-              {
-                chainId: id,
-                chainName: chain.name,
-                nativeCurrency: chain.nativeCurrency,
-                rpcUrls: [chain.rpcUrls.default.http[0] ?? ''],
-                blockExplorerUrls: this.getBlockExplorerUrls(chain),
-              },
-            ],
-          })
-          const currentChainId = await this.getChainId()
-          if (currentChainId !== chainId) {
-            throw new Error('Failed to switch chain')
-          }
-          return { id: chainId }
-        } catch (error) {
-          if (/user rejected request/i.test((error as any)?.message)) {
-            throw new UserRejectedRequestError(error)
-          }
-          throw new AddChainError()
-        }
-      }
-
-      throw new SwitchChainError(error)
-    }
-  }
-
-  private getBlockExplorerUrls(chain: Chain) {
-    const blockExplorers = chain.blockExplorers
-    if (blockExplorers?.default?.url) {
-      return [blockExplorers.default.url]
-    }
-    return undefined
+    return getTrustWalletProvider()
   }
 }

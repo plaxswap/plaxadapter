@@ -1,1 +1,1 @@
-export { miniProgram } from './miniProgram'
+export * from './miniProgram'
