@@ -3,7 +3,6 @@ import { withSentryConfig } from '@sentry/nextjs'
 import { withAxiom } from 'next-axiom'
 import BundleAnalyzer from '@next/bundle-analyzer'
 import { createVanillaExtractPlugin } from '@vanilla-extract/next-plugin'
-import MiniCssExtractPlugin from 'mini-css-extract-plugin'
 
 const withBundleAnalyzer = BundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
@@ -67,8 +66,6 @@ const config = {
         pathname: '/mainnet/**',
       },
     ],
-  },
-  images: {
     unoptimized: true
 },
   async rewrites() {
@@ -181,10 +178,6 @@ const config = {
         __SENTRY_TRACING__: false,
       }),
     )
-
-    // Add MiniCssExtractPlugin for vanilla-extract
-    webpackConfig.plugins.push(new MiniCssExtractPlugin());
-    
     return webpackConfig
   },
 }
