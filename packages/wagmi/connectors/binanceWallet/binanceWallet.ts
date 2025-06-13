@@ -5,13 +5,14 @@ import {
   Chain,
   ConnectorNotFoundError,
   ResourceUnavailableError,
-  RpcError,
   UserRejectedRequestError,
   SwitchChainNotSupportedError,
+  createConnector,
+  normalizeChainId,
 } from 'wagmi'
-import { InjectedConnector } from 'wagmi/connectors/injected'
-import { hexValue } from '@ethersproject/bytes'
-import type { Ethereum } from '@wagmi/core'
+import { InjectedConnector } from 'wagmi/connectors'
+import { hexValue } from 'viem'
+import type { Ethereum } from 'viem/window'
 
 declare global {
   interface Window {
@@ -43,7 +44,87 @@ const _binanceChainListener = async () =>
     }),
   )
 
-export class BinanceWalletConnector extends InjectedConnector {
+export function binanceWallet(config: { chains?: Chain[] } = {}) {
+  const { chains: _chains } = config
+  const chains = _chains?.filter((c) => !!mappingNetwork[c.id])
+  
+  return createConnector<Window['BinanceChain']>((config) => {
+    const connector = new BinanceWalletConnector({
+      chains,
+      options: {
+        name: 'Binance',
+        shimDisconnect: false,
+        shimChainChangedDisconnect: true,
+      },
+    })
+    
+    return {
+      id: 'bsc',
+      name: 'Binance Wallet',
+      type: 'injected',
+      
+      connect: async ({ chainId } = {}) => {
+        try {
+          const provider = await connector.getProvider()
+          if (!provider) throw new ConnectorNotFoundError()
+          
+          if (provider.on) {
+            provider.on('accountsChanged', config.emitter.emit.bind(null, 'change', { account: connector.onAccountsChanged }))
+            provider.on('chainChanged', config.emitter.emit.bind(null, 'change', { chainId: connector.onChainChanged }))
+            provider.on('disconnect', config.emitter.emit.bind(null, 'disconnect'))
+          }
+          
+          config.emitter.emit('message', { type: 'connecting' })
+          
+          const account = await connector.getAccount()
+          let id = await connector.getChainId()
+          
+          if (chainId && id !== chainId) {
+            const chain = await connector.switchChain(chainId)
+            id = chain.id
+          }
+          
+          return { account, chainId: id }
+        } catch (error) {
+          if (connector.isUserRejectedRequestError(error)) throw new UserRejectedRequestError(error)
+          if ((error as any).code === -32002) throw new ResourceUnavailableError(error)
+          throw error
+        }
+      },
+      
+      disconnect: async () => {
+        const provider = await connector.getProvider()
+        if (!provider?.removeListener) return
+        
+        provider.removeListener('accountsChanged', config.emitter.emit.bind(null, 'change', { account: connector.onAccountsChanged }))
+        provider.removeListener('chainChanged', config.emitter.emit.bind(null, 'change', { chainId: connector.onChainChanged }))
+        provider.removeListener('disconnect', config.emitter.emit.bind(null, 'disconnect'))
+      },
+      
+      getAccount: async () => {
+        return connector.getAccount()
+      },
+      
+      getChainId: async () => {
+        return connector.getChainId()
+      },
+      
+      getProvider: async () => {
+        return connector.getProvider()
+      },
+      
+      isAuthorized: async () => {
+        return connector.isAuthorized()
+      },
+      
+      switchChain: async (chainId) => {
+        return connector.switchChain(chainId)
+      },
+    }
+  })
+}
+
+class BinanceWalletConnector extends InjectedConnector {
   readonly id = 'bsc'
 
   readonly ready = typeof window !== 'undefined'
@@ -51,16 +132,16 @@ export class BinanceWalletConnector extends InjectedConnector {
   provider?: Window['BinanceChain']
 
   constructor({
-    chains: _chains,
+    chains,
+    options,
   }: {
     chains?: Chain[]
-  } = {}) {
-    const options = {
-      name: 'Binance',
-      shimDisconnect: false,
-      shimChainChangedDisconnect: true,
+    options: {
+      name: string
+      shimDisconnect: boolean
+      shimChainChangedDisconnect: boolean
     }
-    const chains = _chains?.filter((c) => !!mappingNetwork[c.id])
+  }) {
     super({
       chains,
       options,
@@ -72,28 +153,21 @@ export class BinanceWalletConnector extends InjectedConnector {
       const provider = await this.getProvider()
       if (!provider) throw new ConnectorNotFoundError()
 
-      if (provider.on) {
-        provider.on('accountsChanged', this.onAccountsChanged)
-        provider.on('chainChanged', this.onChainChanged)
-        provider.on('disconnect', this.onDisconnect)
-      }
-
-      this.emit('message', { type: 'connecting' })
+      // Wagmi v2 handles events differently through the connector config
+      // Event handling is now managed in the binanceWallet function
 
       const account = await this.getAccount()
       // Switch to chain if provided
       let id = await this.getChainId()
-      let unsupported = this.isChainUnsupported(id)
       if (chainId && id !== chainId) {
         const chain = await this.switchChain(chainId)
         id = chain.id
-        unsupported = this.isChainUnsupported(id)
       }
 
-      return { account, chain: { id, unsupported }, provider }
+      return { account, chainId: id, provider }
     } catch (error) {
       if (this.isUserRejectedRequestError(error)) throw new UserRejectedRequestError(error)
-      if ((<RpcError>error).code === -32002) throw new ResourceUnavailableError(error)
+      if ((error as any).code === -32002) throw new ResourceUnavailableError(error)
       throw error
     }
   }
@@ -140,6 +214,6 @@ export class BinanceWalletConnector extends InjectedConnector {
         }
       }
     }
-    throw new SwitchChainNotSupportedError({ connector: this })
+    throw new SwitchChainNotSupportedError({ connector: this, chainId })
   }
 }

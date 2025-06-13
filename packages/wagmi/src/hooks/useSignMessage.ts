@@ -1,26 +1,37 @@
-import { SignMessageArgs } from '@wagmi/core'
 import { useCallback } from 'react'
 import { useAccount, useSignMessage as useSignMessageWagmi } from 'wagmi'
 
+// Definisikan tipe untuk kompatibilitas dengan wagmi v2
+type SignMessageArgs = {
+  message: string | Uint8Array
+}
+
 export function useSignMessage() {
   const { address, connector } = useAccount()
-  const { signMessageAsync: sign } = useSignMessageWagmi()
+  const { signMessageAsync } = useSignMessageWagmi()
 
   return {
     signMessageAsync: useCallback(
       async (args: SignMessageArgs) => {
-        // @ts-ignore
+        // Untuk connector Binance Wallet
         if (connector?.id === 'bsc' && window.BinanceChain && address) {
-          // @ts-ignore
-          const res = await window.BinanceChain.bnbSign?.(address, args.message as string)
-          if (res) {
-            return res.signature
+          try {
+            // @ts-ignore
+            const res = await window.BinanceChain.bnbSign?.(address, args.message as string)
+            if (res) {
+              return res.signature
+            }
+            return null
+          } catch (error) {
+            console.error('Failed to sign message with Binance Wallet', error)
+            throw error
           }
-          return null
         }
-        return sign(args)
+        
+        // Gunakan wagmi v2 signMessageAsync
+        return signMessageAsync(args)
       },
-      [address, connector?.id, sign],
+      [address, connector?.id, signMessageAsync],
     ),
   }
 }

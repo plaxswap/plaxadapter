@@ -1,6 +1,7 @@
-import { BinanceWalletConnector } from '@pancakeswap/wagmi/connectors/binanceWallet'
-import { BloctoConnector } from '@pancakeswap/wagmi/connectors/blocto'
-import { TrustWalletConnector } from '@pancakeswap/wagmi/connectors/trustWallet'
+import { binanceWallet } from '@pancakeswap/wagmi/connectors/binanceWallet'
+import { blocto } from '@pancakeswap/wagmi/connectors/blocto'
+import { trustWallet } from '@pancakeswap/wagmi/connectors/trustWallet'
+import { miniProgram } from '@pancakeswap/wagmi/connectors/miniProgram'
 import { 
   // bsc, bscTestnet, goerli, 
   mainnet, polygon, polygonMumbai } from 'wagmi/chains'
@@ -113,8 +114,8 @@ export const metaMaskConnector = metaMask({
   },
 })
 
-// Catatan: BloctoConnector perlu diperbarui untuk wagmi v2
-const bloctoConnector = new BloctoConnector({
+// Menggunakan factory function blocto untuk wagmi v2
+const bloctoConnector = blocto({
   chains,
   options: {
     defaultChainId: 137,
@@ -126,15 +127,23 @@ const ledgerConnector = ledger({
   chains,
 })
 
-// Catatan: BinanceWalletConnector perlu diperbarui untuk wagmi v2
-export const bscConnector = new BinanceWalletConnector({ chains })
+// Menggunakan factory function binanceWallet untuk wagmi v2
+export const bscConnector = binanceWallet({ chains })
 
-// Catatan: TrustWalletConnector perlu diperbarui untuk wagmi v2
-export const trustWalletConnector = new TrustWalletConnector({
+// Menggunakan factory function trustWallet untuk wagmi v2
+export const trustWalletConnector = trustWallet({
   chains,
   options: {
     shimDisconnect: false,
     shimChainChangedDisconnect: true,
+  },
+})
+
+// Menggunakan factory function miniProgram untuk wagmi v2
+export const miniProgramConnector = miniProgram({
+  chains,
+  getWeb3Provider: () => {
+    return typeof window !== 'undefined' ? window.bn : null
   },
 })
 
@@ -149,11 +158,12 @@ export const config = createConfig({
     injectedConnector,
     coinbaseConnector,
     walletConnectConnector,
-    // Catatan: Connector berikut perlu diperbarui untuk wagmi v2
-    // bscConnector,
-    // bloctoConnector,
+    // Connector yang sudah diperbarui untuk wagmi v2
+    bscConnector,
+    bloctoConnector,
     ledgerConnector,
-    // trustWalletConnector,
+    trustWalletConnector,
+    miniProgramConnector,
   ],
 })
 

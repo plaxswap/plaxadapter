@@ -1,6 +1,6 @@
-import { Chain } from 'wagmi'
+import { defineChain } from 'wagmi/chains'
 
-export const canto = {
+export const canto = defineChain({
  id: 7700,
  name: 'Canto',
  network: 'canto',
@@ -17,9 +17,9 @@ export const canto = {
  etherscan: { name: 'CantoExplorer', url: 'https://evm.explorer.canto.io' },
  default: { name: 'CantoExplorer', url: 'https://evm.explorer.canto.io/' },
  },
-}
+})
 
- export const core = {
+export const core = defineChain({
     id: 1116,
     name: 'Core',
     network: 'core',
@@ -36,6 +36,4 @@ export const canto = {
     etherscan: { name: 'CoreScan', url: 'https://scan.coredao.org' },
     default: { name: 'CoreScan', url: 'https://scan.coredao.org' },
     },
-
-    
-} as const satisfies Chain
+})

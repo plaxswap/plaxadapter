@@ -6,7 +6,7 @@ export interface ExtendEthereum extends Ethereum {
   isBlocto?: true
   isMathWallet?: true
   isTrustWallet?: true
-  isBlocto?: true
+  bn?: any
 }
 
 declare global {
