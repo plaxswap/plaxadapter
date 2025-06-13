@@ -37,6 +37,7 @@ const mockRouter: NextRouter = {
   isPreview: false,
 }
 
+if (process.env.NODE_ENV === 'test') {
 export function renderWithProvider(
   ui,
   { preloadedState = undefined, store = initializeStore(preloadedState), router = {}, ...renderOptions } = {},
@@ -49,6 +50,7 @@ export function renderWithProvider(
     )
   }
   return rtlRender(ui, { wrapper: Wrapper, ...renderOptions })
+}
 }
 
 export const createReduxWrapper =
