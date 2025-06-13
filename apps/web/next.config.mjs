@@ -36,9 +36,7 @@ const config = {
   compiler: {
     styledComponents: true,
   },
-  experimental: {
-    scrollRestoration: true,
-    transpilePackages: [
+  transpilePackages: [
       '@pancakeswap/ui',
       '@pancakeswap/uikit',
       '@pancakeswap/swap-sdk-core',
@@ -55,9 +53,11 @@ const config = {
       '@ledgerhq',
       '@gnosis.pm/safe-apps-wagmi',
     ],
+  experimental: {
+    scrollRestoration: true,
   },
   reactStrictMode: true,
-  swcMinify: true,
+  // swcMinify: true,
   images: {
     remotePatterns: [
       {
