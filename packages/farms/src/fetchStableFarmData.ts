@@ -37,7 +37,7 @@ export async function fetchStableFarmData(
   chainId = ChainId.BSC,
   multicallv2: MultiCallV2,
 ) {
-  const calls: Call[] = farms.flatMap((f) => [
+  const calls: Call[] = farms.reduce<Call[]>((acc, f) => acc.concat([
     {
       address: f.stableSwapAddress,
       name: 'balances',
@@ -58,7 +58,7 @@ export async function fetchStableFarmData(
       name: 'get_dy',
       params: [1, 0, parseUnits('1', f.quoteToken.decimals)],
     },
-  ])
+  ]), [])
 
   const chunkSize = calls.length / farms.length
 

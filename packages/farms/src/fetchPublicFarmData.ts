@@ -76,7 +76,7 @@ export const fetchPublicFarmsData = async (
   masterChefAddress: string,
 ): Promise<any[]> => {
   try {
-    const farmCalls = farms.flatMap((farm) => fetchFarmCalls(farm, masterChefAddress, nonBSCVaultAddresses[chainId]))
+    const farmCalls = farms.reduce((acc, farm) => [...acc, ...fetchFarmCalls(farm, masterChefAddress, nonBSCVaultAddresses[chainId as keyof typeof nonBSCVaultAddresses])], [] as ReturnType<typeof fetchFarmCalls>)
     const chunkSize = farmCalls.length / farms.length
     const farmMultiCallResult = await multicall({ abi, calls: farmCalls, chainId })
     return chunk(farmMultiCallResult, chunkSize)

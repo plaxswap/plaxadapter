@@ -14,7 +14,7 @@ export const getFarmBaseTokenPrice = (
   nativePriceUSD: FixedNumber,
   wNative: string,
   stable: string,
-  quoteTokenInBusd,
+  quoteTokenInBusd: FixedNumber,
 ): FixedNumber => {
   const hasTokenPriceVsQuote = Boolean(farm.tokenPriceVsQuote)
 
