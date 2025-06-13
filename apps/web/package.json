@@ -144,5 +144,9 @@
     "typechain": "^6.1.0",
     "vite-tsconfig-paths": "^4.0.3",
     "vitest": "^0.27.2"
-  }
+  },
+  "resolutions": {
+  "mini-css-extract-plugin": "2.7.6"
+}
+
 }
